@@ -427,18 +427,14 @@ void CPUrender::C_Perspective(){
 void CPUrender::InitColor(){
 	unsigned char transparentTable[256];
 	
-	int buf=0;
+
 	for(int i = 0; i < 256; i++){
-		if(alphaTable[i] == 0){
-			transparentTable[i] = 0;
-			buf++;
-		}
+		if(alphaTable[i] == 0)
+			transparentTable[i] = 0;		
 		else		
 			transparentTable[i] = 1;
 	}
-	//버그잡기
-	if(buf != 256)
-		transparentTable[205] = 1;
+
 	
 	int aSAT[257]; // summed area table
 	int *pSAT = &(aSAT[1]);  //pSAT[-1] == aSAT[0];
@@ -471,7 +467,7 @@ void CPUrender::InitMinMaxEmptyBlock(){
 
 				//한 덩어리의 최대값과 최소값을 찾는다.
 				for(vz = bz*8; vz <= bz*8 + 8; vz++){
-					if(vz >= blockSize[2]-1)
+					if(vz > volumeSize[2]-1)
 						break;
 					for(vy = by*8; vy <= by*8 + 8; vy++){  
 						for(vx = bx*8; vx <= bx*8 + 8; vx++){         
