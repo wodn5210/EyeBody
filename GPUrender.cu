@@ -5,16 +5,15 @@
 //gpu 상수메모리
 __constant__ int gResolution;
 __constant__ int gVolumeSize[3];
-__constant__ int gBlockSize[3];//volume을 8칸씩 나눈 x, y 개수
+__constant__ float gBlockSize[3];//volume을 8칸씩 나눈 x, y, z 개수
 __constant__ float gEye[3];
 __constant__ float gDir[3];
-__constant__ float gBackDir[3];
 __constant__ float gCross[3];
 __constant__ float gU[3];
 __constant__ float gL[3];
 __constant__ int gValidDir[3];
-//__constant__ bool emptyBlock[32*32*29];
-__constant__ bool emptyBlock[40*40*40]; //볼륨이 커지면 40으로 크게 잡자?
+__constant__ bool emptyBlock[32*32*29];
+//__constant__ bool emptyBlock[*40*40]; //볼륨이 커지면 40으로 크게 잡자?
 
 cudaArray* cudaArray = {0};
 GLuint pbo = 0;     // EyeBody pixel buffer object
@@ -60,7 +59,7 @@ __inline__ __device__ void getNormal(float pos[3], float N[3]){
 
 	float len = vec_lenth(N);
 	if(len != 0)//0으로 나눠지는걸 주의
-		s_product(N, 1/vec_lenth(N), N); //단위벡터로 만들기
+		s_product(N, 1/vec_lenth(N), N); //단위벡터로 만들기		
 }
 __inline__ __device__ float sign(float a){
 	if(a > 0)
@@ -122,7 +121,7 @@ __inline__ __device__ bool IsIntersectRayBox1(float& startT, float& endT, float 
 	vec_add(start, buf, pos);
 
 	//광선과 박스의 교점을 찾을수 없으면
-	float maxBox[3] = {gVolumeSize[0], gVolumeSize[1], gVolumeSize[2]};
+	float maxBox[3] = {gVolumeSize[0]-1, gVolumeSize[1]-1, gVolumeSize[2]-1};
 	float minBox[3] = {0.0f, 0.0f, 0.0f};
 
 	float result1[3];
@@ -142,15 +141,15 @@ __inline__ __device__ int EmptySpaceLeap1(float pos[3]){
 	//현재 박스가 비어있음을 확인하면 다음박스로 도약한다.
 	int dt = 0;
 	float currentBox[3] = {floorf(pos[0]*0.125f), floorf(pos[1]*0.125f), floorf(pos[2]*0.125f)};
-	int currentBoxId = currentBox[0]+ currentBox[1]*gBlockSize[0] + currentBox[2]*gBlockSize[0]*gBlockSize[1];
+	float currentBoxId = currentBox[0]+ currentBox[1]*gBlockSize[0] + currentBox[2]*gBlockSize[0]*gBlockSize[1];
 
-	if(emptyBlock[currentBoxId]){
+	if(emptyBlock[(int)currentBoxId]){
 		while(true){
 			dt++;
 			vec_add(pos, gDir, pos);
 
 			float forwardBox[3] = {floorf(pos[0]*0.125f), floorf(pos[1]*0.125f), floorf(pos[2]*0.125f)};
-			int forwardBoxId = forwardBox[0]+ forwardBox[1]*gBlockSize[0] + forwardBox[2]*gBlockSize[0]*gBlockSize[2];
+			float forwardBoxId = forwardBox[0]+ forwardBox[1]*gBlockSize[0] + forwardBox[2]*gBlockSize[0]*gBlockSize[1];
 
 			//새로운 박스에 도달하면 빈공간도약검사를 끝낸다.
 			if(currentBoxId != forwardBoxId)
@@ -164,8 +163,7 @@ __inline__ __device__ float AlphaBlending1(float4* PIT, float pos[3], float3& cA
 	unsigned char nowData = (unsigned char)(tex3D(texPtr, pos[0], pos[1], pos[2])*255.0f);		
 	unsigned char nextData = (unsigned char)(tex3D(texPtr, pos[0]+gDir[0], pos[1]+gDir[1], pos[2]+gDir[2])*255.0f);
 	
-	if((nowData + nextData) == 0)
-		return aOld;
+
 
 	float N[3];// 픽셀의 법선벡터
 	getNormal(pos, N);//법선벡터를 찾는다.
@@ -441,8 +439,8 @@ __global__ void ChangeAlpha(float* alphaTable, int* transparentTable, int* aSAT)
 }
 __global__ void InitMinMaxEmptyBlock(unsigned char* emptyBlockMax, unsigned char* emptyBlockMin){
 	int i = blockDim.x*blockIdx.x + threadIdx.x;
-	int bz = i/(gBlockSize[0]*gBlockSize[1]);
-	int by = (i%(int)(gBlockSize[0]*gBlockSize[1]))/gBlockSize[0];
+	int bz = i/((int)gBlockSize[0]*(int)gBlockSize[1]);
+	int by = (i%((int)gBlockSize[0]*(int)gBlockSize[1]))/gBlockSize[0];
 	int bx = i%(int)gBlockSize[1];
 
 
@@ -544,6 +542,7 @@ __global__ void InitPreIntegration(float4* pit, float* alphaTable, float3* color
 GPUrender::GPUrender(){
 	PerspectiveView = false;
 	eye[0] = eye[1] = eye[2] = 0;
+
 	float sqr = 1/sqrtf(3);
 	L[0] = L[1] = L[2] = sqr;
 	up[0] = up[1] = 0;
@@ -552,6 +551,7 @@ GPUrender::GPUrender(){
 	zoom = 1.0f;
 	resolution = 256;
 	pbo = 0;
+	
 }
 
 void GPUrender::InitColor(){
@@ -586,9 +586,9 @@ void GPUrender::InitColor(){
 
 	cudaFree(gTransparentTable);
 
-	cudaMalloc((void**)&gEmptyBlock, sizeof(bool)*32*32*29);
+	cudaMalloc((void**)&gEmptyBlock, sizeof(bool)*blockSize[0]*blockSize[1]*blockSize[2]);
 
-	cudaMemset(gEmptyBlock, 0, 32*32*29*sizeof(bool));
+	cudaMemset(gEmptyBlock, 0, blockSize[0]*blockSize[1]*blockSize[2]*sizeof(bool));
 	cudaEventRecord(start, 0);
 	InitEmptyBlock<<<58, 512>>>(gEmptyBlock, gEmptyBlockMax, gEmptyBlockMin, gSAT);
 	cudaEventRecord(end, 0);
@@ -596,8 +596,8 @@ void GPUrender::InitColor(){
 	cudaEventElapsedTime(&time, start, end);
 	printf("InitEmptyBlock time = %fms\n", time);
 	//상수메모리로 빈공간블록정보 보낸다.
-	cudaMemset(emptyBlock, 0, 32*32*29*sizeof(bool));
-	cudaMemcpyToSymbol(emptyBlock, gEmptyBlock, sizeof(bool)*32*32*29, 0, cudaMemcpyDeviceToDevice);
+	//cudaMemset(emptyBlock, 0, blockSize[0]*blockSize[1]*blockSize[2]*sizeof(bool));
+	cudaMemcpyToSymbol(emptyBlock, gEmptyBlock, sizeof(bool)*blockSize[0]*blockSize[1]*blockSize[2], 0, cudaMemcpyDeviceToDevice);
 
 	cudaFree(gEmptyBlock);
 	cudaFree(gSAT);
@@ -646,9 +646,6 @@ void GPUrender::InitGpuConst(){
 	cudaMemcpyToSymbol(gL, L, const_size);
 	cudaMemcpyToSymbol(gValidDir, validDir, sizeof(int)*3);
 	cudaMemcpyToSymbol(gResolution, &resolution, sizeof(int)*1);
-	float backDir[3];
-	s_product(dir, 1.3, backDir);
-	cudaMemcpyToSymbol(gBackDir, backDir, const_size);
 }
 void GPUrender::InitPixelBuffer(){
 	glGenBuffers(1, &pbo);//버퍼 객체를 생성한다.
@@ -785,20 +782,24 @@ void GPUrender::InitVolume(unsigned char* Volume, int size[3]){
 	at[1] = size[1]/2;
 	at[2] = size[2]/2;
 
+
 	glewInit();
 
 	cudaMemcpyToSymbol(gVolumeSize, volumeSize, sizeof(int)*3);
 
-	int iBlockSize[3] = {volumeSize[0]/8, volumeSize[1]/8, volumeSize[2]/8};
+	blockSize[0] = volumeSize[0]/8;
+	blockSize[1] = volumeSize[1]/8;
+	blockSize[2] = volumeSize[2]/8;
 	if(volumeSize[0]%8)
-		iBlockSize[0]+=1;
+		blockSize[0]+=1;
 	if(volumeSize[1]%8)
-		iBlockSize[1]+=1;
+		blockSize[1]+=1;
 	if(volumeSize[2]%8)
-		iBlockSize[2]+=1;
+		blockSize[2]+=1;
+	printf("%d %d %d\n", blockSize[0], blockSize[1], blockSize[2]);
 
-	int fBlockSize[3] = {iBlockSize[0], iBlockSize[1], iBlockSize[2]};
-	cudaMemcpyToSymbol(gBlockSize, fBlockSize, sizeof(int)*3);
+	float fBlockSize[3] = {(float)blockSize[0], (float)blockSize[1], (float)blockSize[2]};
+	cudaMemcpyToSymbol(gBlockSize, fBlockSize, sizeof(float)*3);
 
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<unsigned char>();	
 	cudaExtent eVolumeSize = make_cudaExtent(volumeSize[0], volumeSize[1], volumeSize[2]);
@@ -826,10 +827,10 @@ void GPUrender::InitVolume(unsigned char* Volume, int size[3]){
 	cudaEventCreate(&start);
 	cudaEventCreate(&end);
 	
-	cudaMalloc((void**)&gEmptyBlockMax, sizeof(unsigned char)*iBlockSize[0]*iBlockSize[1]*iBlockSize[2]);
-	cudaMalloc((void**)&gEmptyBlockMin, sizeof(unsigned char)*iBlockSize[0]*iBlockSize[1]*iBlockSize[2]);
-	int block = iBlockSize[0]*iBlockSize[1]*iBlockSize[2]/512;
-	if((iBlockSize[0]*iBlockSize[1]*iBlockSize[2])%512)
+	cudaMalloc((void**)&gEmptyBlockMax, sizeof(unsigned char)*blockSize[0]*blockSize[1]*blockSize[2]);
+	cudaMalloc((void**)&gEmptyBlockMin, sizeof(unsigned char)*blockSize[0]*blockSize[1]*blockSize[2]);
+	int block = blockSize[0]*blockSize[1]*blockSize[2]/512;
+	if((blockSize[0]*blockSize[1]*blockSize[2])%512)
 		block++;
 	cudaEventRecord(start, 0);
 	InitMinMaxEmptyBlock<<<block, 512>>>(gEmptyBlockMax, gEmptyBlockMin);
