@@ -295,14 +295,14 @@ void CEyeBodyView::ReSizeGLScene(GLsizei width, GLsizei height)
 	glViewport( 0, 0, width, height); 
 
 
-	//안해도 상관없다
+	////안해도 상관없다
 	//glMatrixMode( GL_PROJECTION); 
 	//glLoadIdentity( );
-	
-	// calculate aspect ratio of the window
+	//
+	//// calculate aspect ratio of the window
 	//gluPerspective (45.f, (GLfloat)height/width, 0.1f, 1000.f );
 
-	//set modelview matrix
+	////set modelview matrix
 	//glMatrixMode(GL_MODELVIEW); 
 	//glLoadIdentity( );
 }
@@ -481,3 +481,4 @@ void CEyeBodyView::OnProcessorCpu()
 	}
 	DrawGLScene();
 }
+

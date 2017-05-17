@@ -13,6 +13,7 @@ private :
 	float3* colorTable;
 
 	int volumeSize[3];
+	int blockSize[3];
 	bool PerspectiveView;
 	float eye[3];
 	float dir[3];
